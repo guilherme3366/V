@@ -32,10 +32,10 @@ const LeadList = ({ leads, etapas }: LeadListProps) => {
                 <td className="px-6 py-5">
                   <Link to={`/negociacao/${lead.id}`} className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold border border-primary/20">
-                      {lead.nome.substring(0, 2).toUpperCase()}
+                      {lead.cliente.nome.substring(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold group-hover:text-primary transition-colors">{lead.nome}</p>
+                      <p className="text-sm font-semibold group-hover:text-primary transition-colors">{lead.cliente.nome}</p>
                       <p className="text-[10px] text-white/20 font-mono uppercase tracking-widest">Criado em {new Date(lead.criado_em).toLocaleDateString()}</p>
                     </div>
                   </Link>
@@ -44,11 +44,11 @@ const LeadList = ({ leads, etapas }: LeadListProps) => {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-xs text-white/40">
                       <Phone size={12} />
-                      {lead.telefone}
+                      {lead.cliente.telefone}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-white/40">
                       <Mail size={12} />
-                      {lead.email || 'N/A'}
+                      {lead.cliente.email || 'N/A'}
                     </div>
                   </div>
                 </td>
