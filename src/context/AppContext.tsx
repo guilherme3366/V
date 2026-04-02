@@ -179,6 +179,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Fetch initial data
   const fetchData = async (user: SupabaseUser) => {
+    setIsLoading(true);
     try {
       // Fetch Profile
       const { data: profile, error: profileError } = await supabase
@@ -279,6 +280,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
+        setIsLoading(true);
         fetchData(session.user);
       } else {
         setUsuario(null);
