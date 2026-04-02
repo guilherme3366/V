@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Lead, useApp } from '../context/AppContext';
-import { MessageSquare, Paperclip, MoreVertical } from 'lucide-react';
+import { MessageSquare, Paperclip, MoreVertical, Trash2, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -14,7 +14,9 @@ interface LeadCardProps {
 
 const LeadCard = ({ lead, isOverlay }: LeadCardProps) => {
   const navigate = useNavigate();
-  const { updateLead } = useApp();
+  const { updateLead, deleteLead } = useApp();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: lead.id,
   });
@@ -53,7 +55,7 @@ const LeadCard = ({ lead, isOverlay }: LeadCardProps) => {
           ]}
           onChange={(val) => updateLead(lead.id, { status_negociacao: val as any })}
           buttonClassName={cn(
-            "px-2 py-0.5 pr-1 rounded-md text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all border border-transparent hover:border-white/10",
+            "px-2 py-0.5 pr-1 rounded-md text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all border border-transparent hover:border-white/10 pointer-events-auto",
             lead.status_negociacao === 'andamento' && "bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20",
             lead.status_negociacao === 'vendido' && "bg-green-500/10 text-green-400 hover:bg-green-500/20",
             lead.status_negociacao === 'perdido' && "bg-red-500/10 text-red-400 hover:bg-red-500/20",
@@ -61,9 +63,58 @@ const LeadCard = ({ lead, isOverlay }: LeadCardProps) => {
           )}
           dropdownClassName="w-32 left-0 bottom-full mb-1 origin-bottom"
         />
-        <button className="text-white/20 hover:text-white transition-colors pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-          <MoreVertical size={14} />
-        </button>
+        
+        <div className="relative">
+          <button 
+            className="text-white/20 hover:text-white transition-colors pointer-events-auto p-1 z-10 relative" 
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setIsMenuOpen(!isMenuOpen);
+            }}
+          >
+            <MoreVertical size={14} />
+          </button>
+          
+          {isMenuOpen && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }} 
+              />
+              <div 
+                className="absolute top-full right-0 mt-1 w-40 bg-[#1a1a1f] border border-white/10 rounded-xl shadow-xl overflow-hidden z-50 py-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    navigate(`/chat-focado/${lead.id}`);
+                  }}
+                  className="w-full text-left px-3 py-2 text-[10px] uppercase font-bold tracking-wider text-white hover:bg-primary/20 hover:text-primary transition-colors flex items-center gap-2 pointer-events-auto"
+                >
+                  <MessageCircle size={12} />
+                  Ir para Chat
+                </button>
+                <div className="h-px bg-white/5 my-1" />
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    if (window.confirm('Tem certeza que deseja excluir esta negociação?')) {
+                      deleteLead(lead.id);
+                    }
+                  }}
+                  className="w-full text-left px-3 py-2 text-[10px] uppercase font-bold tracking-wider text-red-500 hover:bg-red-500/10 transition-colors flex items-center gap-2 pointer-events-auto"
+                >
+                  <Trash2 size={12} />
+                  Excluir
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="mb-4 pointer-events-none">

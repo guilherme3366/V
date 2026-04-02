@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { useApp, Usuario, PerfilUsuario } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
-import { UserPlus, MoreHorizontal, Shield, X, Check, User, Mail, ShieldAlert, Trash2 } from 'lucide-react';
+import { UserPlus, MoreHorizontal, Shield, X, Check, User, Mail, ShieldAlert, Trash2, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatCPF, formatPhone } from '../lib/utils';
 import ConfirmModal from '../components/ConfirmModal';
 
 const UsersPage = () => {
-  const { equipe, addUsuario, deleteUsuario } = useApp();
+  const { equipe, addUsuario, deleteUsuario, updateUsuarioMembro } = useApp();
   const { showToast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [editUser, setEditUser] = useState<Usuario | null>(null);
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     id: '',
@@ -23,16 +25,62 @@ const UsersPage = () => {
     email: '',
     cpf: '',
     telefone: '',
-    perfil: 'vendedor' as PerfilUsuario
+    perfil: 'vendedor' as PerfilUsuario,
+    status: 'ativo' as 'ativo' | 'inativo' | 'convidado'
   });
 
-  const handleInvite = (e: React.FormEvent) => {
+  const handleOpenModal = (user?: Usuario) => {
+    if (user) {
+      setEditUser(user);
+      setFormData({
+        nome: user.nome,
+        email: user.email,
+        cpf: user.cpf || '',
+        telefone: user.telefone || '',
+        perfil: user.perfil,
+        status: user.status
+      });
+    } else {
+      setEditUser(null);
+      setFormData({
+        nome: '',
+        email: '',
+        cpf: '',
+        telefone: '',
+        perfil: 'vendedor',
+        status: 'ativo'
+      });
+    }
+    setIsModalOpen(true);
+    setIsMenuOpen(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.nome && formData.email) {
-      addUsuario(formData);
-      setFormData({ nome: '', email: '', cpf: '', telefone: '', perfil: 'vendedor' });
-      setIsModalOpen(false);
-      showToast('Convite enviado com sucesso!', 'success');
+    setLoading(true);
+    
+    try {
+      if (editUser) {
+        const result = await updateUsuarioMembro(editUser.id, formData);
+        if (result.success) {
+          showToast('Usuário atualizado com sucesso!', 'success');
+          setIsModalOpen(false);
+        } else {
+          showToast(result.error || 'Erro ao atualizar usuário', 'error');
+        }
+      } else {
+        const result = await addUsuario(formData);
+        if (result.success) {
+          showToast('Convite enviado com sucesso!', 'success');
+          setIsModalOpen(false);
+        } else {
+          showToast(result.error || 'Erro ao convidar usuário', 'error');
+        }
+      }
+    } catch (error) {
+      showToast('Ocorreu um erro inesperado', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -46,9 +94,24 @@ const UsersPage = () => {
   };
 
   const handleConfirmDelete = async () => {
-    await deleteUsuario(confirmModal.id);
+    const result = await deleteUsuario(confirmModal.id);
+    if (result.success) {
+      showToast('Usuário removido da equipe.', 'info');
+    } else {
+      showToast('Erro ao remover usuário.', 'error');
+    }
     setConfirmModal(prev => ({ ...prev, isOpen: false }));
-    showToast('Usuário removido da equipe.', 'info');
+  };
+
+  const toggleStatus = async (user: Usuario) => {
+    const newStatus = user.status === 'ativo' ? 'inativo' : 'ativo';
+    const result = await updateUsuarioMembro(user.id, { status: newStatus });
+    if (result.success) {
+      showToast(`Usuário ${newStatus === 'ativo' ? 'ativado' : 'desativado'} com sucesso!`, 'success');
+    } else {
+      showToast('Erro ao alterar status.', 'error');
+    }
+    setIsMenuOpen(null);
   };
 
   return (
@@ -59,7 +122,7 @@ const UsersPage = () => {
           <p className="text-white/40 text-sm">Gerencie o acesso do seu escritório</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => handleOpenModal()}
           className="btn-primary w-full sm:w-auto shadow-lg shadow-primary/10"
         >
           <UserPlus size={18} />
@@ -133,8 +196,23 @@ const UsersPage = () => {
                                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                className="absolute right-6 top-12 w-40 glass rounded-xl border border-white/10 shadow-2xl z-50 p-1.5"
+                                className="absolute right-6 top-12 w-48 glass rounded-xl border border-white/10 shadow-2xl z-50 p-1.5"
                               >
+                                <button 
+                                  onClick={() => handleOpenModal(u)}
+                                  className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-white/60 hover:bg-white/10 hover:text-white transition-all"
+                                >
+                                  <User size={12} />
+                                  Editar Informações
+                                </button>
+                                <button 
+                                  onClick={() => toggleStatus(u)}
+                                  className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-white/60 hover:bg-white/10 hover:text-white transition-all"
+                                >
+                                  {u.status === 'ativo' ? <X size={12} /> : <Check size={12} />}
+                                  {u.status === 'ativo' ? 'Desativar Usuário' : 'Ativar Usuário'}
+                                </button>
+                                <div className="h-px bg-white/5 my-1" />
                                 <button 
                                   onClick={() => handleDeleteClick(u.id, u.nome)}
                                   className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-red-400/60 hover:bg-red-500/10 hover:text-red-400 transition-all"
@@ -156,7 +234,7 @@ const UsersPage = () => {
         </div>
       </div>
 
-      {/* Modal de Convite */}
+      {/* Modal de Convite/Edição */}
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 flex items-center justify-center z-[100] p-4">
@@ -164,7 +242,7 @@ const UsersPage = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => !loading && setIsModalOpen(false)}
               className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             />
             <motion.div 
@@ -178,11 +256,13 @@ const UsersPage = () => {
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-xl bg-primary/10 text-primary">
-                    <UserPlus size={24} />
+                    {editUser ? <User size={24} /> : <UserPlus size={24} />}
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold">Convidar Membro</h3>
-                    <p className="text-white/40 text-xs">Adicione um novo integrante à equipe</p>
+                    <h3 className="text-xl font-bold">{editUser ? 'Editar Membro' : 'Convidar Membro'}</h3>
+                    <p className="text-white/40 text-xs">
+                      {editUser ? `Editando perfil de ${editUser.nome}` : 'Adicione um novo integrante à equipe'}
+                    </p>
                   </div>
                 </div>
                 <button 
@@ -193,69 +273,71 @@ const UsersPage = () => {
                 </button>
               </div>
 
-              <form onSubmit={handleInvite} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-[10px] uppercase tracking-widest text-white/30 font-mono ml-1">Nome Completo</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
                     <input 
-                      autoFocus
+                      autoFocus={!editUser}
                       required
                       type="text" 
                       value={formData.nome}
                       onChange={(e) => setFormData({...formData, nome: e.target.value})}
                       placeholder="Ex: João Souza" 
-                      className="w-full bg-white/[0.03] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all"
+                      className="w-full bg-white/[0.03] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all font-sans"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] uppercase tracking-widest text-white/30 font-mono ml-1">E-mail Profissional</label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
-                    <input 
-                      required
-                      type="email" 
-                      value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
-                      placeholder="joao@escritorio.com" 
-                      className="w-full bg-white/[0.03] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all"
-                    />
+                {!editUser && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase tracking-widest text-white/30 font-mono ml-1">E-mail Profissional</label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                      <input 
+                        required
+                        type="email" 
+                        value={formData.email}
+                        onChange={(e) => setFormData({...formData, email: e.target.value})}
+                        placeholder="joao@escritorio.com" 
+                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all font-sans"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="space-y-2">
-                  <label className="text-[10px] uppercase tracking-widest text-white/30 font-mono ml-1">CPF</label>
-                  <div className="relative">
-                    <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
-                    <input 
-                      required
-                      type="text" 
-                      value={formData.cpf}
-                      onChange={(e) => {
-                        setFormData({...formData, cpf: formatCPF(e.target.value)});
-                      }}
-                      placeholder="000.000.000-00" 
-                      className="w-full bg-white/[0.03] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all font-mono"
-                    />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase tracking-widest text-white/30 font-mono ml-1">CPF</label>
+                    <div className="relative">
+                      <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                      <input 
+                        type="text" 
+                        value={formData.cpf}
+                        onChange={(e) => {
+                          setFormData({...formData, cpf: formatCPF(e.target.value)});
+                        }}
+                        placeholder="000.000.000-00" 
+                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all font-mono"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] uppercase tracking-widest text-white/30 font-mono ml-1">Telefone / WhatsApp</label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
-                    <input 
-                      required
-                      type="text" 
-                      value={formData.telefone}
-                      onChange={(e) => {
-                        setFormData({...formData, telefone: formatPhone(e.target.value)});
-                      }}
-                      placeholder="(00) 00000-0000" 
-                      className="w-full bg-white/[0.03] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all font-mono"
-                    />
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase tracking-widest text-white/30 font-mono ml-1">Telefone</label>
+                    <div className="relative">
+                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                      <input 
+                        type="text" 
+                        value={formData.telefone}
+                        onChange={(e) => {
+                          setFormData({...formData, telefone: formatPhone(e.target.value)});
+                        }}
+                        placeholder="(00) 00000-0000" 
+                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all font-mono"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -292,17 +374,25 @@ const UsersPage = () => {
                 <div className="pt-4 flex gap-3">
                   <button 
                     type="button"
+                    disabled={loading}
                     onClick={() => setIsModalOpen(false)}
-                    className="flex-1 py-3 px-6 rounded-2xl text-sm font-bold text-white/40 hover:bg-white/5 transition-all"
+                    className="flex-1 py-3 px-6 rounded-2xl text-sm font-bold text-white/40 hover:bg-white/5 transition-all disabled:opacity-50"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit"
-                    className="flex-[2] btn-primary shadow-xl shadow-primary/20"
+                    disabled={loading}
+                    className="flex-[2] btn-primary shadow-xl shadow-primary/20 disabled:opacity-50"
                   >
-                    <Check size={18} />
-                    Enviar Convite
+                    {loading ? (
+                      <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Check size={18} />
+                        {editUser ? 'Salvar Alterações' : 'Enviar Convite'}
+                      </>
+                    )}
                   </button>
                 </div>
               </form>

@@ -117,6 +117,20 @@ const KanbanPage = () => {
 
   const activeLead = activeId ? leads.find(l => l.id === activeId) : null;
 
+  // Estatísticas Dinâmicas do Funil Atual
+  const funilLeads = leads.filter(l => etapas.some(e => e.id === l.etapa_id && e.funil_id === activeFunil?.id));
+  const totalLeads = funilLeads.length;
+  const emAndamento = funilLeads.filter(l => l.status_negociacao === 'andamento').length;
+  const leadsVendidos = funilLeads.filter(l => l.status_negociacao === 'vendido').length;
+  const conversao = totalLeads > 0 ? Math.round((leadsVendidos / totalLeads) * 100) : 0;
+  
+  const totalValor = funilLeads.reduce((acc, curr) => acc + (Number(curr.valor_estimado) || 0), 0);
+  const formatValor = (valor: number) => {
+    if (valor >= 1000000) return `R$ ${(valor / 1000000).toFixed(1).replace('.0', '')}M`;
+    if (valor >= 1000) return `R$ ${(valor / 1000).toFixed(1).replace('.0', '')}k`;
+    return `R$ ${valor}`;
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header do Kanban */}
@@ -263,17 +277,10 @@ const KanbanPage = () => {
       {/* Estatísticas Rápidas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Total de Leads', value: leads.length, icon: Users, color: 'text-blue-400' },
-          { label: 'Em Andamento', value: leads.filter(l => l.status_negociacao === 'andamento').length, icon: Clock, color: 'text-yellow-400' },
-          { label: 'Taxa de Conversão', value: '12%', icon: TrendingUp, color: 'text-green-400' },
-          { 
-            label: 'Valor Estimado', 
-            value: `R$ ${(leads
-              .filter(l => l.funil_id === activeFunil?.id)
-              .reduce((acc, curr) => acc + (curr.valor_estimado || 0), 0) / 1000).toFixed(0)}k`, 
-            icon: Settings2, 
-            color: 'text-purple-400' 
-          },
+          { label: 'Total de Leads', value: totalLeads, icon: Users, color: 'text-blue-400' },
+          { label: 'Em Andamento', value: emAndamento, icon: Clock, color: 'text-yellow-400' },
+          { label: 'Taxa de Conversão', value: `${conversao}%`, icon: TrendingUp, color: 'text-green-400' },
+          { label: 'Valor Estimado', value: formatValor(totalValor), icon: Settings2, color: 'text-purple-400' },
         ].map((stat, i) => (
           <div key={i} className="glass-card p-4 rounded-2xl flex items-center gap-4">
             <div className={`p-3 rounded-xl bg-white/5 ${stat.color}`}>

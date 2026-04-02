@@ -264,50 +264,6 @@ const PipelineSettings = ({ funis, etapas, addEtapa, updateEtapa, deleteEtapa, a
   );
 };
 
-const LeadSettings = ({ leads, setIsNewLeadModalOpen }: any) => {
-  return (
-    <div className="space-y-8">
-      <SectionHeader title="Gerenciamento de Leads" subtitle="Visualize e crie novas oportunidades de negócio" />
-
-      <div className="p-8 rounded-[32px] bg-gradient-to-br from-primary/10 to-transparent border border-primary/10 flex flex-col items-center justify-center text-center gap-4">
-        <div className="w-16 h-16 rounded-3xl bg-primary/20 flex items-center justify-center text-primary">
-          <Users size={32} />
-        </div>
-        <div>
-          <h4 className="text-lg font-bold">Adicionar Novo Lead</h4>
-          <p className="text-white/40 text-xs max-w-[240px] mt-1 italic">Comece uma nova jornada com um cliente em potencial agora mesmo.</p>
-        </div>
-        <button 
-          onClick={() => setIsNewLeadModalOpen(true)}
-          className="btn-primary px-8 py-3 rounded-2xl shadow-xl shadow-primary/20 mt-2"
-        >
-          <Plus size={18} />
-          Novo Lead
-        </button>
-      </div>
-
-      <div className="space-y-4">
-        <label className="text-[10px] uppercase tracking-widest text-white/30 font-mono ml-4">Leads Recentes</label>
-        <div className="space-y-2">
-          {leads.slice(0, 5).map((lead: any) => (
-            <div key={lead.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-              <div>
-                <p className="text-sm font-bold">{lead.nome}</p>
-                <p className="text-[10px] text-white/20 uppercase font-mono">{lead.email || 'Sem e-mail'}</p>
-              </div>
-              <div className="px-3 py-1 rounded-full bg-white/5 text-[10px] font-bold text-white/40 uppercase tracking-tighter">
-                {lead.status_negociacao}
-              </div>
-            </div>
-          ))}
-          {leads.length === 0 && (
-            <p className="text-center py-8 text-white/20 text-sm italic">Nenhum lead encontrado.</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const InputField = ({ label, icon: Icon, value, onChange, placeholder, disabled, type = "text" }: any) => (
   <div className="space-y-2">
@@ -402,7 +358,6 @@ const SettingsPage = () => {
           <NavItem id="perfil" label="Meu Perfil" icon={User} activeSection={activeSection} setActiveSection={setActiveSection} />
           <NavItem id="empresa" label="Empresa" icon={Building} activeSection={activeSection} setActiveSection={setActiveSection} />
           <NavItem id="pipelines" label="Funis e Etapas" icon={LayoutGrid} activeSection={activeSection} setActiveSection={setActiveSection} />
-          <NavItem id="leads_config" label="Gerenciar Leads" icon={Users} activeSection={activeSection} setActiveSection={setActiveSection} />
           <NavItem id="seguranca" label="Segurança" icon={Lock} activeSection={activeSection} setActiveSection={setActiveSection} />
         </aside>
 
@@ -594,20 +549,6 @@ const SettingsPage = () => {
               </motion.div>
             )}
 
-            {activeSection === 'leads_config' && (
-              <motion.div 
-                key="leads_config"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="glass p-8 lg:p-10 rounded-[40px] border-white/5 relative overflow-hidden"
-              >
-                <LeadSettings 
-                  leads={leads} 
-                  setIsNewLeadModalOpen={setIsNewLeadModalOpen} 
-                />
-              </motion.div>
-            )}
 
             {activeSection === 'seguranca' && (
               <motion.div 

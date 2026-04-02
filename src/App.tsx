@@ -6,6 +6,7 @@ import KanbanPage from './pages/KanbanPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import UsersPage from './pages/UsersPage';
+import LeadsPage from './pages/LeadsPage';
 import SettingsPage from './pages/SettingsPage';
 import NegotiationDetailPage from './pages/NegotiationDetailPage';
 import ChatPage from './pages/ChatPage';
@@ -29,6 +30,7 @@ function App() {
           <Route path="/cadastro" element={<RegisterPage />} />
           <Route element={isAuthenticated ? <Layout /> : <Navigate to="/login" replace />}>
             <Route path="/kanban" element={<KanbanPage />} />
+            <Route path="/leads" element={<LeadsPage />} />
             <Route path="/negociacao/:id" element={<NegotiationDetailPage />} />
             <Route path="/usuarios" element={<UsersPage />} />
             <Route path="/configuracoes" element={<SettingsPage />} />

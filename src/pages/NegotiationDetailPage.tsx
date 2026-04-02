@@ -1,16 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
+import { useApp, Tarefa, Arquivo, TipoTarefa } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import { 
   ArrowLeft, 
   CheckCircle2, 
   XCircle, 
-  Pause, 
   Trash2,
   Phone,
   Mail,
-  User,
   Calendar,
   Plus,
   FileText,
@@ -23,12 +21,28 @@ import {
   MapPin,
   Shield,
   DollarSign,
-  MessageSquare
+  MessageSquare,
+  Loader2,
+  Download,
+  Users,
+  Coffee,
+  List
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatCPF, formatCNPJ, formatPhone } from '../lib/utils';
 import ConfirmModal from '../components/ConfirmModal';
 import CustomSelect from '../components/CustomSelect';
+import NewTaskModal from '../components/NewTaskModal';
+
+const TAREFA_ICON_MAP: Record<string, any> = {
+  'tarefa': List,
+  'ligação': Phone,
+  'reunião': Users,
+  'visita': MapPin,
+  'email': Mail,
+  'whatsapp': MessageSquare,
+  'almoço': Coffee
+};
 
 const TabButton = ({ id, label, icon: Icon, activeTab, setActiveTab }: { id: any, label: string, icon: any, activeTab: string, setActiveTab: (id: any) => void }) => (
   <button 
@@ -89,13 +103,64 @@ const InfoItem = ({ icon: Icon, label, value, field, parent = 'negociacao', type
 const NegotiationDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { leads, etapas, updateLead, deleteLead } = useApp();
+  const { 
+    leads, 
+    etapas, 
+    updateLead, 
+    deleteLead,
+    fetchTarefas,
+    updateTarefa,
+    deleteTarefa,
+    fetchArquivos,
+    uploadArquivo,
+    deleteArquivo
+  } = useApp();
   const { showToast } = useToast();
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   
-  const handleRemove = async () => {
-    setIsConfirmModalOpen(true);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'historico' | 'tarefas' | 'arquivos'>('historico');
+  const [leadData, setLeadData] = useState<any>(null);
+  
+  const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [arquivos, setArquivos] = useState<Arquivo[]>([]);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadTarefas = async () => {
+    if (!id) return;
+    setIsLoadingContent(true);
+    const data = await fetchTarefas(id);
+    setTarefas(data);
+    setIsLoadingContent(false);
   };
+
+  const loadArquivos = async () => {
+    if (!id) return;
+    const data = await fetchArquivos(id);
+    setArquivos(data);
+  };
+
+  useEffect(() => {
+    const foundLead = leads.find(l => l.id === id);
+    if (foundLead) {
+      setLeadData({ ...foundLead });
+    }
+  }, [id, leads]);
+
+  useEffect(() => {
+    if (id) {
+      if (activeTab === 'tarefas') loadTarefas();
+      if (activeTab === 'arquivos') loadArquivos();
+    }
+  }, [id, activeTab]);
+
+  if (!leadData) return <div className="p-20 text-center text-white/20 font-mono flex flex-col items-center gap-4">
+    <Loader2 className="animate-spin text-primary" size={40} />
+    Carregando dados...
+  </div>;
 
   const handleConfirmDelete = async () => {
     await deleteLead(id!);
@@ -103,31 +168,54 @@ const NegotiationDetailPage = () => {
     showToast('Lead excluído permanentemente.', 'info');
     navigate('/kanban');
   };
-  
-  const [isEditing, setIsEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'historico' | 'tarefas' | 'arquivos'>('historico');
-  
-  // Local state for the lead being viewed/edited
-  const [leadData, setLeadData] = useState<any>(null);
-
-  useEffect(() => {
-    const foundLead = leads.find(l => l.id === id);
-    if (foundLead) {
-      setLeadData({ ...foundLead });
-    } else {
-      // Fallback
-      setLeadData({ ...leads[0] });
-    }
-  }, [id, leads]);
-
-  if (!leadData) return <div className="p-20 text-center text-white/20 font-mono">Carregando dados...</div>;
-
-  const currentEtapa = etapas.find(e => e.id === leadData.etapa_id);
 
   const handleSave = () => {
     updateLead(leadData.id, leadData);
     setIsEditing(false);
     showToast('Alterações salvas com sucesso!', 'success');
+  };
+
+  const handleToggleTarefa = async (tarefa: Tarefa) => {
+    const newStatus = !tarefa.concluida;
+    const result = await updateTarefa(tarefa.id, { concluida: newStatus });
+    if (result.success) {
+      setTarefas(prev => prev.map(t => t.id === tarefa.id ? { ...t, concluida: newStatus } : t));
+      showToast(newStatus ? 'Tarefa concluída!' : 'Tarefa reaberta.', 'success');
+    }
+  };
+
+  const handleDeleteTarefa = async (tarefaId: string) => {
+    const result = await deleteTarefa(tarefaId);
+    if (result.success) {
+      setTarefas(prev => prev.filter(t => t.id !== tarefaId));
+      showToast('Tarefa removida.', 'info');
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id) return;
+
+    setIsUploading(true);
+    const result = await uploadArquivo(file, id);
+    setIsUploading(false);
+
+    if (result.success) {
+      showToast('Arquivo enviado com sucesso!', 'success');
+      loadArquivos();
+    } else {
+      showToast(result.error || 'Erro ao enviar arquivo.', 'error');
+    }
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDeleteArquivo = async (arquivo: Arquivo) => {
+    const result = await deleteArquivo(arquivo.id, arquivo.url);
+    if (result.success) {
+      setArquivos(prev => prev.filter(a => a.id !== arquivo.id));
+      showToast('Arquivo removido.', 'info');
+    }
   };
 
   return (
@@ -239,7 +327,7 @@ const NegotiationDetailPage = () => {
               </button>
             )}
             <button 
-              onClick={handleRemove}
+              onClick={() => setIsConfirmModalOpen(true)}
               title="Excluir" 
               className="p-3 bg-white/5 text-white/40 rounded-2xl hover:text-red-400 hover:bg-red-400/10 transition-all border border-transparent hover:border-red-400/20"
             >
@@ -323,13 +411,14 @@ const NegotiationDetailPage = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
+                    key="historico"
                     className="space-y-10 relative"
                   >
                     <div className="absolute left-[23px] top-2 bottom-2 w-px bg-white/5" />
                     
                     {[
-                      { type: 'lead_created', title: 'Lead Criado', text: 'Lead originado através de campanha de Tráfego Pago.', time: 'Ontem às 14:20', icon: Plus, color: 'text-blue-400' },
-                      { type: 'stage_move', title: 'Movido de Etapa', text: 'Lead avançou para a etapa de Prospecção.', time: 'Hoje às 09:15', icon: Send, color: 'text-primary' },
+                      { type: 'lead_created', title: 'Lead Criado', text: 'Lead originado através de campanha de Tráfego Pago.', time: 'Ontem às 14:20', icon: Plus },
+                      { type: 'stage_move', title: 'Movido de Etapa', text: 'Lead avançou para a etapa de Prospecção.', time: 'Hoje às 09:15', icon: Send },
                     ].map((item, i) => (
                       <div key={i} className="flex gap-6 relative group">
                         <div className="w-12 h-12 rounded-2xl bg-surface border border-white/10 flex items-center justify-center z-10 text-white/20 group-hover:border-primary/20 transition-all flex-shrink-0 shadow-lg">
@@ -352,30 +441,78 @@ const NegotiationDetailPage = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
+                    key="tarefas"
                     className="space-y-6"
                   >
                     <div className="flex items-center justify-between mb-6 px-4">
                       <p className="text-[10px] uppercase tracking-widest text-white/20 font-mono">Planos de Ação</p>
-                      <button className="flex items-center gap-2 text-primary hover:opacity-80 transition-all font-black text-[10px] uppercase tracking-widest bg-primary/10 px-4 py-2 rounded-xl border border-primary/10">
+                      <button 
+                        onClick={() => setIsNewTaskModalOpen(true)}
+                        className="flex items-center gap-2 text-primary hover:opacity-80 transition-all font-black text-[10px] uppercase tracking-widest bg-primary/10 px-4 py-2 rounded-xl border border-primary/10"
+                      >
                         <Plus size={14} />
                         Nova Tarefa
                       </button>
                     </div>
 
-                    <div className="glass-card p-6 rounded-3xl border-white/5 hover:border-primary/20 transition-all cursor-pointer group">
-                      <div className="flex items-start gap-5">
-                        <div className="w-6 h-6 rounded-lg border-2 border-white/10 mt-1 flex-shrink-0 group-hover:border-primary group-hover:bg-primary/5 transition-all" />
-                        <div className="min-w-0">
-                          <h4 className="text-base font-bold mb-3">Solicitar Cópia do Processo</h4>
-                          <div className="flex items-center gap-4">
-                            <span className="text-[10px] px-3 py-1 rounded-lg bg-blue-500/10 text-blue-400 font-bold uppercase tracking-wider">Ligação</span>
-                            <div className="flex items-center gap-2 text-[10px] text-white/20 font-mono">
-                               <Clock size={12} />
-                               15:30 - Hoje
-                            </div>
-                          </div>
+                    <div className="space-y-4">
+                      {isLoadingContent ? (
+                        <div className="py-20 text-center flex flex-col items-center gap-4">
+                          <Loader2 className="animate-spin text-primary/40" size={32} />
+                          <p className="text-[10px] uppercase tracking-widest text-white/20 font-mono">Carregando tarefas...</p>
                         </div>
-                      </div>
+                      ) : tarefas.length > 0 ? (
+                        tarefas.map((tarefa) => {
+                          const Icon = TAREFA_ICON_MAP[tarefa.tipo] || List;
+                          return (
+                            <div key={tarefa.id} className="glass-card p-6 rounded-3xl border-white/5 hover:border-primary/20 transition-all cursor-pointer group">
+                              <div className="flex items-start justify-between gap-5">
+                                <div className="flex items-start gap-5 flex-1 min-w-0" onClick={() => handleToggleTarefa(tarefa)}>
+                                  <div className={cn(
+                                    "w-6 h-6 rounded-lg border-2 mt-1 flex-shrink-0 flex items-center justify-center transition-all",
+                                    tarefa.concluida ? "bg-primary border-primary text-black" : "border-white/10 group-hover:border-primary"
+                                  )}>
+                                    {tarefa.concluida && <CheckCircle2 size={16} strokeWidth={3} />}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className={cn("text-base font-bold mb-3 transition-all", tarefa.concluida && "text-white/20 line-through")}>
+                                      {tarefa.titulo}
+                                    </h4>
+                                    <div className="flex items-center gap-4">
+                                      <span className={cn(
+                                        "text-[10px] px-3 py-1 rounded-lg font-bold uppercase tracking-wider",
+                                        tarefa.tipo === 'ligação' ? "bg-blue-500/10 text-blue-400" :
+                                        tarefa.tipo === 'reunião' ? "bg-purple-500/10 text-purple-400" :
+                                        tarefa.tipo === 'visita' ? "bg-orange-500/10 text-orange-400" :
+                                        "bg-white/5 text-white/40"
+                                      )}>
+                                        {tarefa.tipo}
+                                      </span>
+                                      {tarefa.data_vencimento && (
+                                        <div className="flex items-center gap-2 text-[10px] text-white/20 font-mono">
+                                          <Clock size={12} />
+                                          {new Date(tarefa.data_vencimento).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteTarefa(tarefa.id); }}
+                                  className="p-2 text-white/10 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="py-20 text-center space-y-4">
+                          <CheckCircle2 size={48} className="mx-auto text-white/5" />
+                          <p className="text-white/20 font-mono uppercase text-[10px] tracking-widest">Nenhuma tarefa pendente</p>
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -385,44 +522,84 @@ const NegotiationDetailPage = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
+                    key="arquivos"
                     className="space-y-8"
                   >
-                    <div className="border-2 border-dashed border-white/5 rounded-[32px] p-10 lg:p-14 flex flex-col items-center justify-center gap-6 hover:border-primary/20 hover:bg-primary/[0.02] transition-all cursor-pointer group">
-                      <div className="w-16 h-16 rounded-[24px] bg-white/[0.03] flex items-center justify-center text-white/20 group-hover:text-primary group-hover:scale-110 transition-all duration-300">
-                        <Paperclip size={24} />
-                      </div>
-                      <div className="text-center space-y-2">
-                        <p className="text-sm font-bold">Solte seus arquivos aqui</p>
-                        <p className="text-[10px] text-white/20 font-mono uppercase tracking-[0.2em]">Ou clique para selecionar</p>
-                      </div>
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                    />
+                    
+                    <div 
+                      onClick={() => !isUploading && fileInputRef.current?.click()}
+                      className={cn(
+                        "border-2 border-dashed border-white/5 rounded-[32px] p-10 lg:p-14 flex flex-col items-center justify-center gap-6 hover:border-primary/20 hover:bg-primary/[0.02] transition-all cursor-pointer group relative",
+                        isUploading && "opacity-50 cursor-wait"
+                      )}
+                    >
+                      {isUploading ? (
+                        <div className="flex flex-col items-center gap-4">
+                          <Loader2 size={32} className="animate-spin text-primary" />
+                          <p className="text-sm font-bold animate-pulse text-primary">Enviando arquivo...</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="w-16 h-16 rounded-[24px] bg-white/[0.03] flex items-center justify-center text-white/20 group-hover:text-primary group-hover:scale-110 transition-all duration-300">
+                            <Paperclip size={24} />
+                          </div>
+                          <div className="text-center space-y-2">
+                            <p className="text-sm font-bold">Solte seus arquivos aqui</p>
+                            <p className="text-[10px] text-white/20 font-mono uppercase tracking-[0.2em]">Ou clique para selecionar</p>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <div className="space-y-3 px-2">
                       <p className="text-[10px] uppercase tracking-widest text-white/20 font-mono mb-4 px-2">Documentos Anexados</p>
-                      {[
-                        { name: 'RG_Frente.pdf', size: '1.2 MB', ext: 'PDF' },
-                        { name: 'Comprovante_Residencia.jpg', size: '2.5 MB', ext: 'IMG' },
-                      ].map((file, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 rounded-[20px] bg-white/[0.01] border border-white/5 group hover:border-primary/10 hover:bg-white/[0.03] transition-all">
-                          <div className="flex items-center gap-4 min-w-0">
-                            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/20 group-hover:text-primary transition-colors">
-                              <FileText size={18} />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold truncate group-hover:text-white transition-colors">{file.name}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-[9px] text-white/20 font-mono">{file.size}</span>
-                                <span className="text-white/10">•</span>
-                                <span className="text-[9px] text-primary/40 font-mono font-bold uppercase">{file.ext}</span>
+                      
+                      {arquivos.length > 0 ? (
+                        arquivos.map((file) => (
+                          <div key={file.id} className="flex items-center justify-between p-4 rounded-[20px] bg-white/[0.01] border border-white/5 group hover:border-primary/10 hover:bg-white/[0.03] transition-all">
+                            <div className="flex items-center gap-4 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/20 group-hover:text-primary transition-colors">
+                                <FileText size={18} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold truncate group-hover:text-white transition-colors">{file.nome}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[9px] text-white/20 font-mono">{(file.tamanho / 1024 / 1024).toFixed(2)} MB</span>
+                                  <span className="text-white/10">•</span>
+                                  <span className="text-[9px] text-primary/40 font-mono font-bold uppercase">{file.tipo_arquivo}</span>
+                                </div>
                               </div>
                             </div>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                               <a 
+                                 href={file.url} 
+                                 target="_blank" 
+                                 rel="noreferrer"
+                                 className="p-2 text-white/20 hover:text-primary transition-colors"
+                               >
+                                 <Download size={14} />
+                               </a>
+                               <button 
+                                 onClick={() => handleDeleteArquivo(file)}
+                                 className="p-2 text-white/20 hover:text-red-400 transition-colors"
+                               >
+                                 <Trash2 size={14} />
+                               </button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                             <button className="p-2 text-white/20 hover:text-white transition-colors"><Edit2 size={14} /></button>
-                             <button className="p-2 text-white/20 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
-                          </div>
+                        ))
+                      ) : (
+                        <div className="py-10 text-center space-y-4">
+                          <Paperclip size={32} className="mx-auto text-white/5" />
+                          <p className="text-white/20 font-mono uppercase text-[9px] tracking-widest">Nenhum documento anexado</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -439,6 +616,12 @@ const NegotiationDetailPage = () => {
         message={`Deseja realmente excluir a negociação "${leadData.titulo}" de "${leadData.cliente?.nome}"? Esta ação não pode ser desfeita.`}
         confirmText="Excluir Agora"
         variant="danger"
+      />
+      <NewTaskModal 
+        isOpen={isNewTaskModalOpen}
+        onClose={() => setIsNewTaskModalOpen(false)}
+        negociacaoId={id!}
+        onCreated={loadTarefas}
       />
     </div>
   );

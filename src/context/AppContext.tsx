@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseAdmin } from '../lib/supabase';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Tipos baseados no PRD
@@ -71,9 +71,40 @@ export interface Lead {
   etapa_id: string;
   responsavel_id: string;
   titulo: string;
+  servico_id?: string;
   valor_estimado?: number;
   status_negociacao: StatusNegociacao;
   observacoes?: string;
+  criado_em: string;
+}
+
+export interface Servico {
+  id: string;
+  empresa_id: string;
+  nome: string;
+  valor_sugerido?: number;
+  criado_em: string;
+}
+
+export interface Tarefa {
+  id: string;
+  negociacao_id: string;
+  usuario_id: string;
+  titulo: string;
+  descricao?: string;
+  tipo: TipoTarefa;
+  data_vencimento?: string;
+  concluida: boolean;
+  criado_em: string;
+}
+
+export interface Arquivo {
+  id: string;
+  negociacao_id: string;
+  nome: string;
+  url: string;
+  tamanho: number;
+  tipo_arquivo: string;
   criado_em: string;
 }
 
@@ -84,10 +115,14 @@ interface AppContextType {
   leads: Lead[];
   funis: Funil[];
   etapas: Etapa[];
+  servicos: Servico[];
+  clientes: Cliente[];
   isAuthenticated: boolean;
   isLoading: boolean;
   isNewLeadModalOpen: boolean;
   setIsNewLeadModalOpen: (open: boolean) => void;
+  preSelectedClientId: string | null;
+  setPreSelectedClientId: (id: string | null) => void;
   login: (email: string, senha: string) => Promise<{ success: boolean; error?: string }>;
   register: (dados: any) => Promise<{ success: boolean; error?: string; confirmationRequired?: boolean }>;
   logout: () => void;
@@ -96,8 +131,9 @@ interface AppContextType {
   addEtapa: (nome: string, funilId: string) => Promise<void>;
   updateEtapa: (etapaId: string, nome: string) => Promise<void>;
   deleteEtapa: (etapaId: string) => Promise<void>;
-  addUsuario: (dados: Partial<Usuario>) => Promise<void>;
-  deleteUsuario: (id: string) => Promise<void>;
+  addUsuario: (dados: Partial<Usuario>) => Promise<{ success: boolean; error?: string }>;
+  deleteUsuario: (id: string) => Promise<{ success: boolean; error?: string }>;
+  updateUsuarioMembro: (id: string, dados: Partial<Usuario>) => Promise<{ success: boolean; error?: string }>;
   updateEmpresa: (dados: Partial<Empresa>) => Promise<{ success: boolean; error?: string }>;
   updateLead: (id: string, dados: Partial<Lead>) => Promise<void>;
   addLead: (dados: Partial<Lead>) => Promise<void>;
@@ -107,6 +143,21 @@ interface AppContextType {
   addFunil: (nome: string) => Promise<void>;
   updateFunil: (id: string, nome: string) => Promise<void>;
   deleteFunil: (id: string) => Promise<void>;
+  addServico: (nome: string, valorSugerido?: number) => Promise<{ success: boolean; data?: Servico; error?: string }>;
+  addCliente: (dados: Partial<Cliente>) => Promise<{ success: boolean; data?: Cliente; error?: string }>;
+  updateCliente: (id: string, dados: Partial<Cliente>) => Promise<{ success: boolean; error?: string }>;
+  deleteCliente: (id: string) => Promise<{ success: boolean; error?: string }>;
+  
+  // Tarefas e Arquivos
+  fetchTarefas: (negociacaoId: string) => Promise<Tarefa[]>;
+  addTarefa: (dados: Partial<Tarefa>) => Promise<{ success: boolean; data?: Tarefa; error?: string }>;
+  updateTarefa: (id: string, dados: Partial<Tarefa>) => Promise<{ success: boolean; error?: string }>;
+  deleteTarefa: (id: string) => Promise<{ success: boolean; error?: string }>;
+  
+  fetchArquivos: (negociacaoId: string) => Promise<Arquivo[]>;
+  uploadArquivo: (file: File, negociacaoId: string) => Promise<{ success: boolean; data?: Arquivo; error?: string }>;
+  deleteArquivo: (id: string, fileUrl: string) => Promise<{ success: boolean; error?: string }>;
+
   bypassLogin: () => void;
 }
 
@@ -114,6 +165,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
+  const [preSelectedClientId, setPreSelectedClientId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   const [usuario, setUsuario] = useState<Usuario | null>(null);
@@ -122,6 +174,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [funis, setFunis] = useState<Funil[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [etapasLocal, setEtapasLocal] = useState<Etapa[]>([]);
+  const [servicos, setServicos] = useState<Servico[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
 
   // Fetch initial data
   const fetchData = async (user: SupabaseUser) => {
@@ -187,6 +241,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         .eq('empresa_id', profile.empresa_id);
       
       setEquipe(teamData || []);
+
+      // Fetch Services
+      const { data: servicosData } = await supabase
+        .from('servicos')
+        .select('*')
+        .eq('empresa_id', profile.empresa_id)
+        .order('nome', { ascending: true });
+      
+      setServicos(servicosData || []);
+
+      // Fetch Clients
+      const { data: clientesData } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('empresa_id', profile.empresa_id)
+        .order('nome', { ascending: true });
+      
+      setClientes(clientesData || []);
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -364,30 +436,87 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addUsuario = async (dados: Partial<Usuario>) => {
-    // In a real app, logic would involve sending an invite email
-    // For now, we manually create a record if the user exists or just add to the list
-    const { data, error } = await supabase
-      .from('usuarios_perfil')
-      .insert([{
-        ...dados,
-        empresa_id: empresa?.id
-      }])
-      .select()
-      .single();
+    // 1. Sign Up User using non-persistent client
+    // This prevents the current session (Admin) from being switched
+    try {
+      const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({
+        email: dados.email!,
+        password: Math.random().toString(36).slice(-12), 
+        options: {
+          data: {
+            nome: dados.nome,
+          }
+        }
+      });
 
-    if (data && !error) {
-      setEquipe(prev => [...prev, data]);
+      if (authError) throw authError;
+
+      if (authData.user) {
+        // 2. Update the profile that was created by the DB trigger
+        // We wait a bit for the trigger to finish or we try to update
+        const { error: profileError } = await supabase
+          .from('usuarios_perfil')
+          .update({
+            empresa_id: empresa?.id,
+            cpf: dados.cpf,
+            telefone: dados.telefone,
+            perfil: dados.perfil || 'vendedor',
+            status: 'ativo'
+          })
+          .eq('id', authData.user.id);
+
+        if (profileError) throw profileError;
+
+        // Fetch user back to get full record
+        const { data: newMember } = await supabase
+          .from('usuarios_perfil')
+          .select('*')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (newMember) {
+          setEquipe(prev => [...prev, newMember]);
+        }
+        return { success: true };
+      }
+      return { success: false, error: 'Falha ao criar usuário' };
+    } catch (error: any) {
+      console.error('Error adding user:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const updateUsuarioMembro = async (id: string, dados: Partial<Usuario>) => {
+    try {
+      const { error } = await supabase
+        .from('usuarios_perfil')
+        .update(dados)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setEquipe(prev => prev.map(u => u.id === id ? { ...u, ...dados } : u));
+      return { success: true };
+    } catch (error: any) {
+      console.error('Error updating member:', error);
+      return { success: false, error: error.message };
     }
   };
 
   const deleteUsuario = async (id: string) => {
-    const { error } = await supabase
-      .from('usuarios_perfil')
-      .delete()
-      .eq('id', id);
+    try {
+      const { error } = await supabase
+        .from('usuarios_perfil')
+        .delete()
+        .eq('id', id);
 
-    if (!error) {
+      if (error) throw error;
+
       setEquipe(prev => prev.filter(u => u.id !== id));
+      return { success: true };
+    } catch (error: any) {
+      console.error('Error deleting member:', error);
+      return { success: false, error: error.message };
     }
   };
 
@@ -473,6 +602,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         responsavel_id: usuario.id,
         funil_id: dados.funil_id,
         etapa_id: dados.etapa_id,
+        servico_id: (dados as any).servico_id,
         titulo: dados.titulo || 'Novo Serviço',
         valor_estimado: dados.valor_estimado,
         status_negociacao: 'andamento',
@@ -483,6 +613,63 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (newNegociacao && !negError) {
       setLeads(prev => [newNegociacao, ...prev]);
+    }
+  };
+
+  const addServico = async (nome: string, valorSugerido?: number) => {
+    if (!empresa) return { success: false, error: 'Empresa não identificada. Verifique seu login.' };
+
+    try {
+      const { data, error } = await supabase
+        .from('servicos')
+        .insert([{
+          nome,
+          valor_sugerido: valorSugerido,
+          empresa_id: empresa.id
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error adding service:', error);
+        return { success: false, error: error.message };
+      }
+
+      if (data) {
+        setServicos(prev => [...prev, data]);
+        return { success: true, data };
+      }
+      return { success: false, error: 'Falha ao salvar serviço.' };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const addCliente = async (dados: Partial<Cliente>) => {
+    if (!empresa) return { success: false, error: 'Empresa não identificada. Verifique seu login.' };
+
+    try {
+      const { data, error } = await supabase
+        .from('clientes')
+        .insert([{
+          ...dados,
+          empresa_id: empresa.id
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error adding client:', error);
+        return { success: false, error: error.message };
+      }
+
+      if (data) {
+        setClientes(prev => [...prev, data]);
+        return { success: true, data };
+      }
+      return { success: false, error: 'Falha ao salvar cliente.' };
+    } catch (err: any) {
+      return { success: false, error: err.message };
     }
   };
 
@@ -620,10 +807,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       leads, 
       funis, 
       etapas: etapasLocal, 
+      servicos,
       isAuthenticated: !!usuario,
       isLoading,
       isNewLeadModalOpen,
       setIsNewLeadModalOpen,
+      preSelectedClientId,
+      setPreSelectedClientId,
       login,
       register,
       logout,
@@ -660,12 +850,152 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       },
       addUsuario,
       deleteUsuario,
+      updateUsuarioMembro,
       updateEmpresa,
       updateLead,
       addLead,
       deleteLead,
       updateUsuario,
       updatePassword,
+      addServico,
+      clientes,
+      addCliente,
+      
+      // Tarefas
+      fetchTarefas: async (negociacaoId: string) => {
+        const { data, error } = await supabase
+          .from('tarefas')
+          .select('*')
+          .eq('negociacao_id', negociacaoId)
+          .order('criado_em', { ascending: false });
+        if (error) console.error('Error fetching tasks:', error);
+        return data || [];
+      },
+      addTarefa: async (dados: Partial<Tarefa>) => {
+        if (!usuario) return { success: false, error: 'Usuário não identificado' };
+        try {
+          const { data, error } = await supabase
+            .from('tarefas')
+            .insert([{ ...dados, usuario_id: usuario.id }])
+            .select()
+            .single();
+          if (error) throw error;
+          return { success: true, data };
+        } catch (err: any) {
+          return { success: false, error: err.message };
+        }
+      },
+      updateTarefa: async (id: string, dados: Partial<Tarefa>) => {
+        const { error } = await supabase
+          .from('tarefas')
+          .update(dados)
+          .eq('id', id);
+        if (error) return { success: false, error: error.message };
+        return { success: true };
+      },
+      deleteTarefa: async (id: string) => {
+        const { error } = await supabase
+          .from('tarefas')
+          .delete()
+          .eq('id', id);
+        if (error) return { success: false, error: error.message };
+        return { success: true };
+      },
+
+      // Arquivos
+      fetchArquivos: async (negociacaoId: string) => {
+        const { data, error } = await supabase
+          .from('arquivos')
+          .select('*')
+          .eq('negociacao_id', negociacaoId)
+          .order('criado_em', { ascending: false });
+        if (error) console.error('Error fetching files:', error);
+        return data || [];
+      },
+      uploadArquivo: async (file: File, negociacaoId: string) => {
+        try {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${Math.random()}.${fileExt}`;
+          const filePath = `${negociacaoId}/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('negociacoes-arquivos')
+            .upload(filePath, file);
+
+          if (uploadError) throw uploadError;
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('negociacoes-arquivos')
+            .getPublicUrl(filePath);
+
+          const { data, error: dbError } = await supabase
+            .from('arquivos')
+            .insert([{
+              negociacao_id: negociacaoId,
+              nome: file.name,
+              url: publicUrl,
+              tamanho: file.size,
+              tipo_arquivo: fileExt
+            }])
+            .select()
+            .single();
+
+          if (dbError) throw dbError;
+          return { success: true, data };
+        } catch (err: any) {
+          return { success: false, error: err.message };
+        }
+      },
+      deleteArquivo: async (id: string, fileUrl: string) => {
+        try {
+          // Extrair path do storage de uma public URL: negociacao_id/filename
+          const pathParts = fileUrl.split('/');
+          const fileName = pathParts.pop();
+          const folderName = pathParts.pop();
+          const filePath = `${folderName}/${fileName}`;
+
+          await supabase.storage
+            .from('negociacoes-arquivos')
+            .remove([filePath]);
+
+          const { error } = await supabase
+            .from('arquivos')
+            .delete()
+            .eq('id', id);
+
+          if (error) throw error;
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message };
+        }
+      },
+
+      updateCliente: async (id: string, dados: Partial<Cliente>) => {
+        const { error } = await supabase
+          .from('clientes')
+          .update(dados)
+          .eq('id', id);
+        
+        if (error) return { success: false, error: error.message };
+        
+        setClientes(prev => prev.map(c => c.id === id ? { ...c, ...dados } : c));
+        setLeads(prev => prev.map(l => l.cliente_id === id ? { ...l, cliente: { ...l.cliente, ...dados } } : l));
+        
+        return { success: true };
+      },
+      deleteCliente: async (id: string) => {
+        const { error } = await supabase
+          .from('clientes')
+          .delete()
+          .eq('id', id);
+        
+        if (error) return { success: false, error: error.message };
+        
+        setClientes(prev => prev.filter(c => c.id !== id));
+        setLeads(prev => prev.filter(l => l.cliente_id !== id));
+        
+        return { success: true };
+      },
       bypassLogin
     }}>
       {children}

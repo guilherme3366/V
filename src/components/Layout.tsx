@@ -106,6 +106,7 @@ const Layout = () => {
             <div className="text-[10px] uppercase tracking-widest text-white/20 font-mono mb-2 px-4">Menu</div>
           )}
           <SidebarItem to="/kanban" icon={LayoutDashboard} label="CRM Kanban" collapsed={collapsed} />
+          <SidebarItem to="/leads" icon={Users} label="Gerenciar Leads" collapsed={collapsed} />
           <SidebarItem to="/chat" icon={MessageSquare} label="Mensagens" collapsed={collapsed} />
           <SidebarItem to="/usuarios" icon={Users} label="Equipe" collapsed={collapsed} />
           <SidebarItem to="/configuracoes" icon={Settings} label="Configurações" collapsed={collapsed} />
@@ -169,7 +170,7 @@ const Layout = () => {
                 className="btn-primary py-1.5 px-4 text-xs h-9"
               >
                 <Plus size={16} />
-                <span className="hidden sm:inline">Novo Lead</span>
+                <span className="hidden sm:inline">Nova Negociação</span>
               </button>
             )}
             
